@@ -5,11 +5,11 @@ from app.domain.entities import ChunkToSave, Document, DocumentStatus, DocumentT
 
 
 class DocumentRepositoryPort(Protocol):
-    def create(self, *, name: str, type: DocumentType) -> Document: ...
+    def create(self, *, name: str, document_type: DocumentType) -> Document: ...
 
     def get(self, document_id: UUID) -> Document | None: ...
 
-    def list(
+    def list_documents(
         self,
         *,
         page: int,

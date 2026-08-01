@@ -21,7 +21,7 @@ class DocumentStatus(str, Enum):
 class Document:
     id: UUID
     name: str
-    type: DocumentType
+    document_type: DocumentType
     status: DocumentStatus
     ingested_at: datetime
     total_chunks: int | None = None

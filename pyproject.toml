@@ -1,7 +1,7 @@
 [project]
-name = "rag-analista-documentos"
+name = "rag-document-analyst"
 version = "0.1.0"
-description = "Analista de documentos com IA (RAG) — desafio técnico Algarys"
+description = "AI-powered document analyst using retrieval-augmented generation"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",
@@ -37,7 +37,7 @@ explicit = true
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 markers = [
-    "integration: precisa de infra real (Ollama) de pé — pytest -m integration",
+    "integration: requires a running Ollama instance — pytest -m integration",
 ]
 
 [build-system]

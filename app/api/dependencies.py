@@ -15,6 +15,7 @@ from app.adapters.qdrant.vector_search import QdrantVectorSearch
 from app.adapters.rq.connection import ingestion_queue, redis_connection
 from app.adapters.rq.task_queue import RQTaskQueue
 from app.adapters.sqlite.conversation_repository import SQLiteConversationRepository
+from app.api.rate_limit import RedisFixedWindowRateLimiter
 from app.api.security import decode_token
 from app.bootstrap.settings import settings
 from app.ports.conversation_repository import ConversationRepositoryPort
@@ -64,6 +65,18 @@ def get_redis_connection() -> Redis:
     return redis_connection
 
 
+def enforce_document_upload_rate_limit(
+    current_user: str = Depends(get_current_user),
+    redis: Redis = Depends(get_redis_connection),
+) -> None:
+    RedisFixedWindowRateLimiter(
+        redis,
+        key_prefix="document-upload",
+        limit=settings.document_upload_rate_limit,
+        window_seconds=settings.document_upload_rate_window_seconds,
+    ).check(current_user)
+
+
 def get_document_repository(
     qdrant: QdrantClient = Depends(get_qdrant),
 ) -> DocumentRepositoryPort:
@@ -71,7 +84,10 @@ def get_document_repository(
 
 
 def get_task_queue() -> TaskQueuePort:
-    return RQTaskQueue(ingestion_queue)
+    return RQTaskQueue(
+        ingestion_queue,
+        job_timeout_seconds=settings.ingestion_job_timeout_seconds,
+    )
 
 
 def get_ingestion_service(

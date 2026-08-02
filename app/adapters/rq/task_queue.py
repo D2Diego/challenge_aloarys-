@@ -4,8 +4,9 @@ from rq import Queue
 
 
 class RQTaskQueue:
-    def __init__(self, queue: Queue):
+    def __init__(self, queue: Queue, *, job_timeout_seconds: int):
         self._queue = queue
+        self._job_timeout_seconds = job_timeout_seconds
 
     def enqueue_text_ingestion(
         self,
@@ -20,6 +21,7 @@ class RQTaskQueue:
             document_id,
             raw_text,
             name,
+            job_timeout=self._job_timeout_seconds,
         )
 
     def enqueue_pdf_ingestion(
@@ -35,4 +37,5 @@ class RQTaskQueue:
             document_id,
             content,
             name,
+            job_timeout=self._job_timeout_seconds,
         )

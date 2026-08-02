@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.adapters.qdrant.client import ensure_collection, get_qdrant_client
 from app.adapters.qdrant.document_repository import QdrantDocumentRepository
 from app.adapters.sqlite.connection import open_connection
+from app.api.middleware import UploadSizeLimitMiddleware
 from app.api.routers import (
     auth,
     chat,
@@ -82,6 +83,13 @@ async def logging_middleware(request: Request, call_next):
     )
     response.headers["X-Request-ID"] = get_request_id()
     return response
+
+
+app.add_middleware(
+    UploadSizeLimitMiddleware,
+    max_body_size_bytes=settings.max_upload_request_size_bytes,
+    paths={"/documents"},
+)
 
 
 app.include_router(auth.router)

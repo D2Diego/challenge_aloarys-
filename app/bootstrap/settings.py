@@ -22,6 +22,18 @@ class Settings:
     top_k_default: int = int(os.environ.get("TOP_K_DEFAULT", TOP_K_DEFAULT))
     min_score: float = float(os.environ.get("MIN_SCORE", MIN_SCORE))
     max_upload_size_mb: int = int(os.environ.get("MAX_UPLOAD_SIZE_MB", "20"))
+    upload_request_overhead_bytes: int = int(
+        os.environ.get("UPLOAD_REQUEST_OVERHEAD_BYTES", "65536")
+    )
+    ingestion_job_timeout_seconds: int = int(
+        os.environ.get("INGESTION_JOB_TIMEOUT_SECONDS", "300")
+    )
+    document_upload_rate_limit: int = int(
+        os.environ.get("DOCUMENT_UPLOAD_RATE_LIMIT", "10")
+    )
+    document_upload_rate_window_seconds: int = int(
+        os.environ.get("DOCUMENT_UPLOAD_RATE_WINDOW_SECONDS", "60")
+    )
     log_level: str = os.environ.get("LOG_LEVEL", "INFO")
     cors_origins: tuple[str, ...] = field(
         default_factory=lambda: _parse_cors_origins(
@@ -37,6 +49,10 @@ class Settings:
     @property
     def max_upload_size_bytes(self) -> int:
         return self.max_upload_size_mb * 1024 * 1024
+
+    @property
+    def max_upload_request_size_bytes(self) -> int:
+        return self.max_upload_size_bytes + self.upload_request_overhead_bytes
 
 
 settings = Settings()

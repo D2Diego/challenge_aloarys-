@@ -145,3 +145,26 @@ flowchart LR
 ```
 
 Na topologia pública, apenas o proxy reverso deve receber tráfego externo. Qdrant, Redis, Ollama e SQLite permanecem restritos ao servidor/rede privada.
+
+### Proteção de uploads
+
+O `POST /documents` aplica estas defesas na API:
+
+- rejeição antecipada por tamanho e contagem do corpo durante o streaming;
+- limite padrão de arquivo de 20 MiB mais 64 KiB para o envelope multipart;
+- PDF restrito a `application/pdf` e assinatura inicial `%PDF-`;
+- até 10 uploads por usuário a cada 60 segundos, com contador no Redis;
+- timeout padrão de 300 segundos para o job de ingestão no RQ.
+
+Os valores podem ser ajustados no `.env` por `MAX_UPLOAD_SIZE_MB`, `UPLOAD_REQUEST_OVERHEAD_BYTES`, `DOCUMENT_UPLOAD_RATE_LIMIT`, `DOCUMENT_UPLOAD_RATE_WINDOW_SECONDS` e `INGESTION_JOB_TIMEOUT_SECONDS`.
+
+O proxy reverso da Oracle deve cortar corpos grandes antes de eles atravessarem a Tailscale. Para Nginx, com o limite padrão da aplicação:
+
+```nginx
+location /documents {
+    client_max_body_size 21m;
+    proxy_pass http://servidor-tailscale:8000;
+}
+```
+
+Se `MAX_UPLOAD_SIZE_MB` mudar, ajuste também `client_max_body_size`, deixando uma pequena margem para o envelope multipart. Essa barreira no proxy complementa a checagem da API e reduz tráfego e consumo no servidor caseiro.

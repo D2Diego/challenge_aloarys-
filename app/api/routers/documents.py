@@ -5,6 +5,7 @@ import uuid
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 
 from app.api.dependencies import (
+    enforce_document_upload_rate_limit,
     get_current_user,
     get_document_repository,
     get_ingestion_service,
@@ -20,7 +21,12 @@ from app.services.ingestion_service import IngestionService
 router = APIRouter(tags=["documents"], dependencies=[Depends(get_current_user)])
 
 
-@router.post("/documents", status_code=202, response_model=DocumentResponse)
+@router.post(
+    "/documents",
+    status_code=202,
+    response_model=DocumentResponse,
+    dependencies=[Depends(enforce_document_upload_rate_limit)],
+)
 async def ingest_document(
     file: UploadFile | None = File(None),
     text: str | None = Form(None),
@@ -37,12 +43,24 @@ async def ingest_document(
         )
 
     if has_file:
-        content = await file.read()
+        if file.content_type != "application/pdf":
+            raise http_error(
+                415,
+                "UNSUPPORTED_MEDIA_TYPE",
+                "Only PDF files with content type 'application/pdf' are accepted.",
+            )
+        content = await file.read(settings.max_upload_size_bytes + 1)
         if len(content) > settings.max_upload_size_bytes:
             raise http_error(
                 413,
                 "PAYLOAD_TOO_LARGE",
                 f"File exceeds the {settings.max_upload_size_mb}MB limit.",
+            )
+        if not content.startswith(b"%PDF-"):
+            raise http_error(
+                422,
+                "INVALID_PDF",
+                "File content does not have a valid PDF signature.",
             )
         final_name = name or file.filename or "document.pdf"
         document = service.ingest_pdf(name=final_name, content=content)

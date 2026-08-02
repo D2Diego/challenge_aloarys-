@@ -6,6 +6,8 @@ interface Props {
   token: string;
 }
 
+type IngestionMode = "pdf" | "text";
+
 const STATUS_LABEL: Record<DocumentResponse["status"], string> = {
   processing: "processing...",
   ready: "ready",
@@ -14,7 +16,9 @@ const STATUS_LABEL: Record<DocumentResponse["status"], string> = {
 
 export function DocumentManager({ token }: Props) {
   const [documents, setDocuments] = useState<DocumentResponse[]>([]);
-  const [textName, setTextName] = useState("");
+  const [ingestionMode, setIngestionMode] = useState<IngestionMode>("pdf");
+  const [documentName, setDocumentName] = useState("");
+  const [file, setFile] = useState<File | null>(null);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -42,37 +46,45 @@ export function DocumentManager({ token }: Props) {
     return () => clearInterval(interval);
   }, [documents, load]);
 
-  async function handleTextSubmit(event: FormEvent) {
+  async function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    if (!text.trim() || !textName.trim()) return;
+    const finalName = documentName.trim();
+    if (!finalName) return;
+    if (ingestionMode === "pdf" && !file) return;
+    if (ingestionMode === "text" && !text.trim()) return;
+
     setSending(true);
     setError(null);
     try {
-      await ingestText(token, text, textName);
+      if (ingestionMode === "pdf") {
+        await uploadFile(token, file!, finalName);
+        setFile(null);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      } else {
+        await ingestText(token, text, finalName);
+      }
       setText("");
-      setTextName("");
+      setDocumentName("");
       await load();
     } catch {
-      setError("Unable to submit text.");
+      setError(
+        ingestionMode === "pdf"
+          ? "Unable to upload PDF."
+          : "Unable to submit text.",
+      );
     } finally {
       setSending(false);
     }
   }
 
-  async function handleFileSubmit(event: FormEvent) {
-    event.preventDefault();
-    const file = fileInputRef.current?.files?.[0];
-    if (!file) return;
-    setSending(true);
+  function selectMode(mode: IngestionMode) {
+    setIngestionMode(mode);
     setError(null);
-    try {
-      await uploadFile(token, file);
+    if (mode === "pdf") {
+      setText("");
+    } else {
+      setFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
-      await load();
-    } catch {
-      setError("Unable to upload file.");
-    } finally {
-      setSending(false);
     }
   }
 
@@ -89,26 +101,65 @@ export function DocumentManager({ token }: Props) {
     <div className="documents">
       <div className="card">
         <h2>Ingest document</h2>
-        <form className="form-row" onSubmit={handleFileSubmit}>
-          <input ref={fileInputRef} type="file" accept="application/pdf" />
-          <button type="submit" disabled={sending}>
-            Upload PDF
+        <div className="ingestion-toggle" role="group" aria-label="Document type">
+          <button
+            type="button"
+            className={ingestionMode === "pdf" ? "active-ingestion-mode" : ""}
+            aria-pressed={ingestionMode === "pdf"}
+            disabled={sending}
+            onClick={() => selectMode("pdf")}
+          >
+            PDF
           </button>
-        </form>
-        <form className="form-column" onSubmit={handleTextSubmit}>
-          <input
-            placeholder="Document name"
-            value={textName}
-            onChange={(event) => setTextName(event.target.value)}
-          />
-          <textarea
-            placeholder="Paste text to ingest..."
-            value={text}
-            onChange={(event) => setText(event.target.value)}
-            rows={3}
-          />
+          <button
+            type="button"
+            className={ingestionMode === "text" ? "active-ingestion-mode" : ""}
+            aria-pressed={ingestionMode === "text"}
+            disabled={sending}
+            onClick={() => selectMode("text")}
+          >
+            Text
+          </button>
+        </div>
+        <form className="form-column ingestion-form" onSubmit={handleSubmit}>
+          <label>
+            Document name
+            <input
+              placeholder="Example: Warranty policy"
+              value={documentName}
+              required
+              onChange={(event) => setDocumentName(event.target.value)}
+            />
+          </label>
+          {ingestionMode === "pdf" ? (
+            <label>
+              PDF file
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="application/pdf"
+                required
+                onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+              />
+            </label>
+          ) : (
+            <label>
+              Document text
+              <textarea
+                placeholder="Paste text to ingest..."
+                value={text}
+                required
+                onChange={(event) => setText(event.target.value)}
+                rows={6}
+              />
+            </label>
+          )}
           <button type="submit" disabled={sending}>
-            Submit text
+            {sending
+              ? "Sending..."
+              : ingestionMode === "pdf"
+                ? "Upload PDF"
+                : "Submit text"}
           </button>
         </form>
         {error && <p className="error">{error}</p>}

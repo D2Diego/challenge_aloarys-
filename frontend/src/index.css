@@ -15,10 +15,20 @@
   box-sizing: border-box;
 }
 
+html,
 body {
+  min-width: 0;
   margin: 0;
   background: var(--background-color);
   color: var(--text-color);
+}
+
+body {
+  overflow-x: hidden;
+}
+
+#root {
+  min-height: 100vh;
 }
 
 input,
@@ -30,6 +40,8 @@ button {
 
 input,
 textarea {
+  width: 100%;
+  min-width: 0;
   background: var(--background-color);
   border: 1px solid var(--border-color);
   border-radius: 6px;
@@ -49,11 +61,17 @@ button:disabled {
   cursor: not-allowed;
 }
 
-button.link {
+.link {
   background: none;
   color: var(--muted-text-color);
   text-decoration: underline;
   padding: 0;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
 }
 
 .centered-screen {
@@ -86,26 +104,38 @@ button.link {
 }
 
 .app {
-  max-width: 1400px;
+  width: min(100%, 1400px);
   margin: 0 auto;
-  padding: 1.5rem;
+  padding: clamp(0.75rem, 2vw, 1.5rem);
 }
 
 .app header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 1.5rem;
+  gap: 1rem;
+  margin-bottom: clamp(1rem, 2vw, 1.5rem);
+}
+
+.app header h1,
+.card h2 {
+  margin: 0;
 }
 
 .layout {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1.5rem;
   align-items: start;
+  min-width: 0;
 }
 
-@media (max-width: 800px) {
+.layout > *,
+.layout-with-sidebar > * {
+  min-width: 0;
+}
+
+@media (max-width: 1150px) {
   .layout {
     grid-template-columns: 1fr;
   }
@@ -119,12 +149,13 @@ button.link {
 
 .form-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
   margin-top: 0.5rem;
 }
 
 .form-row input {
-  flex: 1;
+  flex: 1 1 14rem;
 }
 
 .form-column {
@@ -132,6 +163,39 @@ button.link {
   flex-direction: column;
   gap: 0.5rem;
   margin-top: 0.75rem;
+}
+
+.form-column label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  color: var(--muted-text-color);
+  font-size: 0.9rem;
+}
+
+.ingestion-toggle {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.35rem;
+  padding: 0.25rem;
+  margin-top: 0.75rem;
+  background: var(--background-color);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+}
+
+.ingestion-toggle button {
+  background: transparent;
+  color: var(--muted-text-color);
+}
+
+.ingestion-toggle button.active-ingestion-mode {
+  background: var(--accent-color);
+  color: white;
+}
+
+.ingestion-form button[type="submit"] {
+  align-self: flex-start;
 }
 
 .document-list {
@@ -147,9 +211,20 @@ button.link {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
   padding: 0.5rem;
   border: 1px solid var(--border-color);
   border-radius: 6px;
+}
+
+.document-list li > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.document-list li > button {
+  margin-left: auto;
 }
 
 .badge {
@@ -189,15 +264,13 @@ button.link {
 .chat {
   display: flex;
   flex-direction: column;
-  height: 70vh;
 }
 
 .messages {
-  flex: 1;
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+  min-height: 12rem;
   margin: 0.75rem 0;
 }
 
@@ -210,6 +283,7 @@ button.link {
 .message p {
   margin: 0;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .message.user {
@@ -235,6 +309,10 @@ button.link {
   gap: 0.15rem;
 }
 
+.sources li {
+  overflow-wrap: anywhere;
+}
+
 .blinking-cursor {
   animation: blink 1s step-start infinite;
 }
@@ -247,7 +325,7 @@ button.link {
 
 .layout-with-sidebar {
   display: grid;
-  grid-template-columns: 260px 1fr;
+  grid-template-columns: 260px minmax(0, 1fr);
   gap: 1.5rem;
   align-items: start;
 }
@@ -262,14 +340,14 @@ button.link {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  max-height: 80vh;
-  overflow-y: auto;
 }
 
 .conversations-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
 }
 
 .conversation-list {
@@ -285,6 +363,8 @@ button.link {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
   padding: 0.5rem;
   border: 1px solid var(--border-color);
   border-radius: 6px;
@@ -292,6 +372,43 @@ button.link {
   font-size: 0.85rem;
 }
 
+.conversation-list li > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.conversation-list li > button {
+  margin-left: auto;
+}
+
 .conversation-list li.active-conversation {
   border-color: var(--accent-color);
+}
+
+@media (max-width: 600px) {
+  .app header {
+    align-items: flex-start;
+  }
+
+  .app header h1 {
+    font-size: 1.45rem;
+  }
+
+  .card {
+    padding: 1rem;
+  }
+
+  .form-row {
+    flex-direction: column;
+  }
+
+  .form-row input,
+  .form-row button,
+  .ingestion-form button[type="submit"] {
+    width: 100%;
+  }
+
+  .message {
+    max-width: 100%;
+  }
 }

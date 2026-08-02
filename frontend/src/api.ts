@@ -68,9 +68,11 @@ export async function ingestText(
 export async function uploadFile(
   token: string,
   file: File,
+  name: string,
 ): Promise<DocumentResponse> {
   const form = new FormData();
   form.append("file", file);
+  form.append("name", name);
   const response = await fetch(`${API_URL}/documents`, {
     method: "POST",
     headers: authHeaders(token),

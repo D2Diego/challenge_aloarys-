@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { API_URL } from "../api";
 import { useChat } from "../useChat";
 import { useConversations } from "../useConversations";
 import { Chat } from "./Chat";
@@ -47,9 +48,19 @@ export function AuthenticatedApp({ token, onLogout }: Props) {
     <div className="app">
       <header>
         <h1>AI Document Analyst</h1>
-        <button className="link" onClick={onLogout}>
-          Sign out
-        </button>
+        <div className="header-actions">
+          <a
+            className="link"
+            href={`${API_URL}/docs`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            API docs
+          </a>
+          <button className="link" onClick={onLogout}>
+            Sign out
+          </button>
+        </div>
       </header>
       <main className="layout-with-sidebar">
         <ConversationList

@@ -35,8 +35,8 @@ def test_returns_empty_history_when_repository_fails():
 def test_does_not_save_without_repository_or_conversation_id():
     repository = _FakeRepository()
 
-    save_turn_safely(None, uuid4(), "simple", "q", "a", [], TokenUsage(0, 0))
-    save_turn_safely(repository, None, "simple", "q", "a", [], TokenUsage(0, 0))
+    save_turn_safely(None, uuid4(), "q", "a", [], TokenUsage(0, 0))
+    save_turn_safely(repository, None, "q", "a", [], TokenUsage(0, 0))
 
     assert repository.saved_turns == []
 
@@ -48,7 +48,6 @@ def test_saves_conversation_turn():
     save_turn_safely(
         repository,
         conversation_id,
-        "agent",
         "question",
         "answer",
         [],
@@ -58,7 +57,6 @@ def test_saves_conversation_turn():
     assert len(repository.saved_turns) == 1
     turn = repository.saved_turns[0]
     assert turn.conversation_id == conversation_id
-    assert turn.pipeline == "agent"
     assert turn.usage.prompt_tokens == 10
 
 
@@ -69,7 +67,6 @@ def test_does_not_propagate_repository_write_failure():
     save_turn_safely(
         repository,
         uuid4(),
-        "simple",
         "question",
         "answer",
         [],

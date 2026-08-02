@@ -1,5 +1,6 @@
-"""Grounded question answering with vector retrieval."""
+"""Moderated question answering through an agent runtime."""
 
+import logging
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Literal
@@ -7,14 +8,16 @@ from uuid import UUID
 
 from app.domain.citations import extract_citations
 from app.domain.conversation import TokenUsage
-from app.domain.prompts import build_prompt
+from app.ports.agent_runtime import AgentCompletedChunk, AgentRuntimePort, AgentTextChunk
 from app.ports.conversation_repository import ConversationRepositoryPort
-from app.ports.embeddings import EmbeddingPort
-from app.ports.llm import LLMPort, LLMTextChunk, LLMUsageChunk
-from app.ports.vector_search import MIN_SCORE, TOP_K_DEFAULT, VectorSearchPort
+from app.ports.vector_search import MIN_SCORE, TOP_K_DEFAULT
 from app.services.conversation_history import get_history_safely, save_turn_safely
-from app.services.retrieval_service import RetrievalService
+from app.services.moderation_service import ModerationService
 from app.services.sources import QuerySource, build_sources
+
+logger = logging.getLogger("app")
+
+AGENT_ERROR_ANSWER = "Unable to generate an answer. Please try again."
 
 
 @dataclass(frozen=True)
@@ -46,14 +49,13 @@ NO_CONTEXT_ANSWER = (
 class QueryService:
     def __init__(
         self,
-        search: VectorSearchPort,
-        embeddings: EmbeddingPort,
-        llm: LLMPort,
+        moderation: ModerationService,
+        runtime: AgentRuntimePort,
         conversation_repository: ConversationRepositoryPort | None = None,
         max_history_turns: int = 5,
     ):
-        self._retrieval = RetrievalService(search, embeddings)
-        self._llm = llm
+        self._moderation = moderation
+        self._runtime = runtime
         self._conversation_repository = conversation_repository
         self._max_history_turns = max_history_turns
 
@@ -70,17 +72,17 @@ class QueryService:
             conversation_id,
             self._max_history_turns,
         )
-        chunks = self._retrieval.retrieve(
+        moderation = self._moderation.evaluate(
             question,
             document_ids,
             top_k,
             min_score,
         )
-        if not chunks:
+
+        if not moderation.approved:
             save_turn_safely(
                 self._conversation_repository,
                 conversation_id,
-                "simple",
                 question,
                 NO_CONTEXT_ANSWER,
                 [],
@@ -88,20 +90,35 @@ class QueryService:
             )
             return QueryResult(answer=NO_CONTEXT_ANSWER, sources=[])
 
-        llm_response = self._llm.generate_response(
-            build_prompt(question, chunks, history)
-        )
-        sources = build_sources(chunks, extract_citations(llm_response.text))
+        try:
+            result = self._runtime.run(
+                question,
+                moderation.chunks,
+                document_ids,
+                history,
+            )
+        except Exception:
+            logger.exception("agent_runtime_failed")
+            save_turn_safely(
+                self._conversation_repository,
+                conversation_id,
+                question,
+                AGENT_ERROR_ANSWER,
+                [],
+                TokenUsage(0, 0),
+            )
+            return QueryResult(answer=AGENT_ERROR_ANSWER, sources=[])
+
+        sources = build_sources(result.sources, extract_citations(result.answer))
         save_turn_safely(
             self._conversation_repository,
             conversation_id,
-            "simple",
             question,
-            llm_response.text,
-            chunks,
-            llm_response.usage,
+            result.answer,
+            result.sources,
+            result.usage,
         )
-        return QueryResult(answer=llm_response.text, sources=sources)
+        return QueryResult(answer=result.answer, sources=sources)
 
     async def stream_answer(
         self,
@@ -116,18 +133,18 @@ class QueryService:
             conversation_id,
             self._max_history_turns,
         )
-        chunks = self._retrieval.retrieve(
+        moderation = self._moderation.evaluate(
             question,
             document_ids,
             top_k,
             min_score,
         )
-        if not chunks:
+
+        if not moderation.approved:
             yield QueryCompletedEvent(answer=NO_CONTEXT_ANSWER, sources=[])
             save_turn_safely(
                 self._conversation_repository,
                 conversation_id,
-                "simple",
                 question,
                 NO_CONTEXT_ANSWER,
                 [],
@@ -136,23 +153,45 @@ class QueryService:
             return
 
         complete_text = ""
+        accumulated_sources = []
         usage = TokenUsage(0, 0)
-        prompt = build_prompt(question, chunks, history)
-        async for chunk in self._llm.generate_response_stream(prompt):
-            if isinstance(chunk, LLMTextChunk):
-                complete_text += chunk.text
-                yield QueryTokenEvent(text=chunk.text)
-            elif isinstance(chunk, LLMUsageChunk):
-                usage = chunk.usage
+        try:
+            async for event in self._runtime.run_stream(
+                question,
+                moderation.chunks,
+                document_ids,
+                history,
+            ):
+                if isinstance(event, AgentTextChunk):
+                    complete_text += event.text
+                    yield QueryTokenEvent(text=event.text)
+                elif isinstance(event, AgentCompletedChunk):
+                    complete_text = event.answer
+                    accumulated_sources = event.sources
+                    usage = event.usage
+        except Exception:
+            logger.exception("agent_runtime_stream_failed")
+            yield QueryCompletedEvent(answer=AGENT_ERROR_ANSWER, sources=[])
+            save_turn_safely(
+                self._conversation_repository,
+                conversation_id,
+                question,
+                AGENT_ERROR_ANSWER,
+                [],
+                TokenUsage(0, 0),
+            )
+            return
 
-        sources = build_sources(chunks, extract_citations(complete_text))
+        sources = build_sources(
+            accumulated_sources,
+            extract_citations(complete_text),
+        )
         yield QueryCompletedEvent(answer=complete_text, sources=sources)
         save_turn_safely(
             self._conversation_repository,
             conversation_id,
-            "simple",
             question,
             complete_text,
-            chunks,
+            accumulated_sources,
             usage,
         )

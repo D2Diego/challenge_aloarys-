@@ -18,10 +18,9 @@ def conversation_repository():
     connection.close()
 
 
-def _turn(conversation_id, question="question", pipeline="simple"):
+def _turn(conversation_id, question="question"):
     return ConversationTurn(
         conversation_id=conversation_id,
-        pipeline=pipeline,
         question=question,
         answer="answer",
         sources=[

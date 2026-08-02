@@ -3,14 +3,19 @@ from uuid import uuid4
 
 from app.domain.conversation import ConversationTurn, TokenUsage
 from app.domain.entities import FoundChunk
-from app.ports.llm import LLMResponse, LLMTextChunk, LLMUsageChunk
-from app.services.query_service import QueryService
+from app.ports.agent_runtime import (
+    AgentCompletedChunk,
+    AgentRunResult,
+    AgentTextChunk,
+)
+from app.services.query_service import AGENT_ERROR_ANSWER, QueryService
+from app.services.moderation_service import ModerationService
+from app.services.retrieval_service import RetrievalService
 
 
 class _FakeSearch:
     def __init__(self, results):
         self.results = results
-        self.last_call = None
 
     def search_chunks(
         self,
@@ -20,7 +25,6 @@ class _FakeSearch:
         min_score,
         document_ids,
     ):
-        self.last_call = (question_embedding, top_k, min_score, document_ids)
         return self.results
 
 
@@ -29,21 +33,40 @@ class _FakeEmbeddings:
         return [0.1, 0.2, 0.3]
 
 
-class _FakeLLM:
-    def __init__(self, answer):
-        self.answer = answer
-        self.last_prompt = None
+class _FakeRuntime:
+    def __init__(self, result):
+        self.result = result
+        self.last_call = None
 
-    def generate_response(self, prompt):
-        self.last_prompt = prompt
-        return LLMResponse(
-            text=self.answer,
-            usage=TokenUsage(prompt_tokens=10, completion_tokens=5),
-        )
+    def run(self, question, initial_context, document_ids, history=None):
+        self.last_call = (question, initial_context, document_ids, history)
+        return self.result
 
-    async def generate_response_stream(self, prompt):
+    async def run_stream(
+        self,
+        question,
+        initial_context,
+        document_ids,
+        history=None,
+    ):
         raise NotImplementedError
         yield
+
+
+class _RecordingStreamRuntime(_FakeRuntime):
+    async def run_stream(
+        self,
+        question,
+        initial_context,
+        document_ids,
+        history=None,
+    ):
+        self.last_call = (question, initial_context, document_ids, history)
+        yield AgentCompletedChunk(
+            answer=self.result.answer,
+            sources=self.result.sources,
+            usage=self.result.usage,
+        )
 
 
 class _FakeConversationRepository:
@@ -56,178 +79,184 @@ class _FakeConversationRepository:
 
     def get_history(self, conversation_id, limit):
         self.last_limit = limit
-        return self.saved_turns
+        return list(self.saved_turns)
 
 
-def _chunk(document_id, text, score):
+def _chunk(text="excerpt"):
     return FoundChunk(
-        document_id=document_id,
+        document_id=uuid4(),
         document_name="document.pdf",
         page=1,
         chunk_index=0,
         text=text,
-        score=score,
+        score=0.9,
     )
 
 
-def test_returns_no_context_answer_without_calling_llm():
-    llm = _FakeLLM("should not be called")
+def _moderation(results):
+    retrieval = RetrievalService(_FakeSearch(results), _FakeEmbeddings())
+    return ModerationService(retrieval)
 
-    result = QueryService(_FakeSearch([]), _FakeEmbeddings(), llm).answer_question(
-        "Any question"
+
+def _service(search_results, runtime_result):
+    runtime = _FakeRuntime(runtime_result)
+    return QueryService(_moderation(search_results), runtime), runtime
+
+
+def test_rejected_question_does_not_call_runtime():
+    service, runtime = _service(
+        [],
+        AgentRunResult("never", [], TokenUsage(10, 5)),
     )
 
+    result = service.answer_question("Any question")
+
+    assert runtime.last_call is None
     assert result.sources == []
-    assert llm.last_prompt is None
     assert "could not find" in result.answer.lower()
 
 
-def test_builds_sources_from_cited_chunks():
-    document_id = uuid4()
-    llm = _FakeLLM("The warranty lasts 12 months [Source 1].")
+def test_approved_question_calls_runtime_with_initial_context():
+    chunk = _chunk()
+    runtime_result = AgentRunResult(
+        answer="Answer with [Source 1].",
+        sources=[chunk],
+        usage=TokenUsage(10, 5),
+    )
+    service, runtime = _service([chunk], runtime_result)
 
-    result = QueryService(
-        _FakeSearch([_chunk(document_id, "12-month warranty.", 0.9)]),
-        _FakeEmbeddings(),
-        llm,
-    ).answer_question("What is the warranty period?", top_k=3, min_score=0.4)
+    result = service.answer_question("question", top_k=3, min_score=0.5)
 
-    assert result.answer == "The warranty lasts 12 months [Source 1]."
-    assert result.sources[0].document_id == document_id
-    assert result.sources[0].score == 0.9
-    assert "12-month warranty." in llm.last_prompt
+    assert runtime.last_call[0] == "question"
+    assert runtime.last_call[1] == [chunk]
+    assert result.answer == "Answer with [Source 1]."
+    assert len(result.sources) == 1
 
 
-def test_filters_uncited_sources():
-    document_a, document_b = uuid4(), uuid4()
+def test_discards_citation_without_matching_source():
+    chunk = _chunk()
+    runtime_result = AgentRunResult(
+        answer="Answer with [Source 2].",
+        sources=[chunk],
+        usage=TokenUsage(10, 5),
+    )
+    service, _ = _service([chunk], runtime_result)
 
-    result = QueryService(
-        _FakeSearch(
-            [
-                _chunk(document_a, "Chunk A.", 0.9),
-                _chunk(document_b, "Chunk B.", 0.8),
-            ]
-        ),
-        _FakeEmbeddings(),
-        _FakeLLM("Only chunk A is used [Source 1]."),
-    ).answer_question("Question")
+    result = service.answer_question("question")
 
-    assert [source.document_id for source in result.sources] == [document_a]
+    assert result.sources == []
+
+
+def test_returns_safe_answer_when_runtime_fails():
+    class _FailingRuntime(_FakeRuntime):
+        def run(self, question, initial_context, document_ids, history=None):
+            raise RuntimeError("internal Ollama timeout")
+
+    service = QueryService(_moderation([_chunk()]), _FailingRuntime(None))
+
+    result = service.answer_question("question")
+
+    assert result.answer == AGENT_ERROR_ANSWER
+    assert "timeout" not in result.answer.lower()
+    assert result.sources == []
 
 
 async def test_streams_tokens_and_completed_event():
-    document_id = uuid4()
+    chunk = _chunk()
 
-    class _StreamingLLM(_FakeLLM):
-        async def generate_response_stream(self, prompt):
-            self.last_prompt = prompt
-            for text in ["The warranty ", "lasts 12 months ", "[Source 1]."]:
-                yield LLMTextChunk(text=text)
-            yield LLMUsageChunk(
-                usage=TokenUsage(prompt_tokens=20, completion_tokens=10)
+    class _StreamingRuntime(_FakeRuntime):
+        async def run_stream(
+            self,
+            question,
+            initial_context,
+            document_ids,
+            history=None,
+        ):
+            for text in ["Answer ", "with [Source 1]."]:
+                yield AgentTextChunk(text=text)
+            yield AgentCompletedChunk(
+                answer="Answer with [Source 1].",
+                sources=[chunk],
+                usage=TokenUsage(10, 5),
             )
 
     service = QueryService(
-        _FakeSearch([_chunk(document_id, "12-month warranty.", 0.9)]),
-        _FakeEmbeddings(),
-        _StreamingLLM(""),
+        _moderation([chunk]),
+        _StreamingRuntime(None),
     )
 
-    events = [event async for event in service.stream_answer("Warranty period?")]
+    events = [event async for event in service.stream_answer("question")]
 
-    assert len([event for event in events if event.type == "token"]) == 3
+    assert len([event for event in events if event.type == "token"]) == 2
     completed = next(event for event in events if event.type == "complete")
-    assert completed.answer == "The warranty lasts 12 months [Source 1]."
+    assert completed.answer == "Answer with [Source 1]."
     assert len(completed.sources) == 1
 
 
-def test_does_not_save_turn_without_conversation_id():
-    conversations = _FakeConversationRepository()
-    document_id = uuid4()
+async def test_rejected_stream_does_not_call_runtime():
+    service, runtime = _service([], None)
 
-    QueryService(
-        _FakeSearch([_chunk(document_id, "text", 0.9)]),
-        _FakeEmbeddings(),
-        _FakeLLM("answer [Source 1]."),
-        conversation_repository=conversations,
-    ).answer_question("question")
+    events = [event async for event in service.stream_answer("question")]
 
-    assert conversations.saved_turns == []
+    assert runtime.last_call is None
+    assert len(events) == 1
+    assert events[0].type == "complete"
+    assert "could not find" in events[0].answer.lower()
 
 
-def test_saves_turn_with_conversation_id():
-    conversations = _FakeConversationRepository()
-    conversation_id = uuid4()
-    document_id = uuid4()
-
-    QueryService(
-        _FakeSearch([_chunk(document_id, "text", 0.9)]),
-        _FakeEmbeddings(),
-        _FakeLLM("answer [Source 1]."),
-        conversation_repository=conversations,
-    ).answer_question("question", conversation_id=conversation_id)
-
-    assert len(conversations.saved_turns) == 1
-    turn = conversations.saved_turns[0]
-    assert turn.pipeline == "simple"
-    assert turn.question == "question"
-    assert turn.sources[0].chunk_index == 0
-
-
-def test_saves_zero_usage_when_no_relevant_chunk_exists():
-    conversations = _FakeConversationRepository()
-
-    QueryService(
-        _FakeSearch([]),
-        _FakeEmbeddings(),
-        _FakeLLM("never called"),
-        conversation_repository=conversations,
-    ).answer_question("question", conversation_id=uuid4())
-
-    assert len(conversations.saved_turns) == 1
-    assert conversations.saved_turns[0].usage.prompt_tokens == 0
-
-
-async def test_saves_streamed_turn_with_usage():
-    conversations = _FakeConversationRepository()
-    conversation_id = uuid4()
-    document_id = uuid4()
-
-    class _StreamingLLM(_FakeLLM):
-        async def generate_response_stream(self, prompt):
-            yield LLMTextChunk(text="answer ")
-            yield LLMTextChunk(text="[Source 1].")
-            yield LLMUsageChunk(
-                usage=TokenUsage(prompt_tokens=7, completion_tokens=3)
-            )
+async def test_returns_safe_stream_event_when_runtime_fails():
+    class _FailingStreamRuntime(_FakeRuntime):
+        async def run_stream(
+            self,
+            question,
+            initial_context,
+            document_ids,
+            history=None,
+        ):
+            raise RuntimeError("internal Ollama timeout")
+            yield
 
     service = QueryService(
-        _FakeSearch([_chunk(document_id, "text", 0.9)]),
-        _FakeEmbeddings(),
-        _StreamingLLM(""),
+        _moderation([_chunk()]),
+        _FailingStreamRuntime(None),
+    )
+
+    events = [event async for event in service.stream_answer("question")]
+
+    assert len(events) == 1
+    assert events[0].answer == AGENT_ERROR_ANSWER
+
+
+def test_passes_empty_history_and_saves_first_conversation_turn():
+    conversations = _FakeConversationRepository()
+    conversation_id = uuid4()
+    chunk = _chunk()
+    runtime_result = AgentRunResult(
+        answer="Answer [Source 1].",
+        sources=[chunk],
+        usage=TokenUsage(10, 5),
+    )
+    runtime = _FakeRuntime(runtime_result)
+    service = QueryService(
+        _moderation([chunk]),
+        runtime,
         conversation_repository=conversations,
     )
 
-    events = [
-        event
-        async for event in service.stream_answer(
-            "question",
-            conversation_id=conversation_id,
-        )
-    ]
+    service.answer_question("question", conversation_id=conversation_id)
 
+    assert runtime.last_call[3] == []
     assert len(conversations.saved_turns) == 1
-    assert conversations.saved_turns[0].usage.prompt_tokens == 7
-    assert events[-1].type == "complete"
+    assert conversations.saved_turns[0].usage.prompt_tokens == 10
+    assert conversations.saved_turns[0].sources[0].chunk_index == chunk.chunk_index
 
 
-def test_includes_previous_history_in_prompt():
+def test_passes_previous_history_to_runtime():
     conversations = _FakeConversationRepository()
     conversation_id = uuid4()
     conversations.saved_turns.append(
         ConversationTurn(
             conversation_id=conversation_id,
-            pipeline="simple",
             question="Previous question",
             answer="Previous answer",
             sources=[],
@@ -235,29 +264,35 @@ def test_includes_previous_history_in_prompt():
             created_at=datetime.now(timezone.utc),
         )
     )
-    llm = _FakeLLM("answer [Source 1].")
-
-    QueryService(
-        _FakeSearch([_chunk(uuid4(), "text", 0.9)]),
-        _FakeEmbeddings(),
-        llm,
+    chunk = _chunk()
+    runtime = _FakeRuntime(
+        AgentRunResult(
+            answer="Answer [Source 1].",
+            sources=[chunk],
+            usage=TokenUsage(10, 5),
+        )
+    )
+    service = QueryService(
+        _moderation([chunk]),
+        runtime,
         conversation_repository=conversations,
         max_history_turns=3,
-    ).answer_question("Current question", conversation_id=conversation_id)
+    )
 
-    assert "Conversation history" in llm.last_prompt
-    assert "Previous question" in llm.last_prompt
-    assert "Previous answer" in llm.last_prompt
+    service.answer_question("Current question", conversation_id=conversation_id)
+
+    assert len(runtime.last_call[3]) == 1
+    assert runtime.last_call[3][0].question == "Previous question"
+    assert runtime.last_call[3][0].answer == "Previous answer"
     assert conversations.last_limit == 3
 
 
-async def test_includes_previous_history_in_streaming_prompt():
+async def test_passes_previous_history_to_streaming_runtime():
     conversations = _FakeConversationRepository()
     conversation_id = uuid4()
     conversations.saved_turns.append(
         ConversationTurn(
             conversation_id=conversation_id,
-            pipeline="simple",
             question="Previous streaming question",
             answer="Previous streaming answer",
             sources=[],
@@ -265,24 +300,22 @@ async def test_includes_previous_history_in_streaming_prompt():
             created_at=datetime.now(timezone.utc),
         )
     )
-
-    class _StreamingLLM(_FakeLLM):
-        async def generate_response_stream(self, prompt):
-            self.last_prompt = prompt
-            yield LLMTextChunk(text="answer [Source 1].")
-            yield LLMUsageChunk(
-                usage=TokenUsage(prompt_tokens=1, completion_tokens=1)
-            )
-
-    llm = _StreamingLLM("")
+    chunk = _chunk()
+    runtime = _RecordingStreamRuntime(
+        AgentRunResult(
+            answer="Answer [Source 1].",
+            sources=[chunk],
+            usage=TokenUsage(10, 5),
+        )
+    )
     service = QueryService(
-        _FakeSearch([_chunk(uuid4(), "text", 0.9)]),
-        _FakeEmbeddings(),
-        llm,
+        _moderation([chunk]),
+        runtime,
         conversation_repository=conversations,
+        max_history_turns=3,
     )
 
-    _ = [
+    events = [
         event
         async for event in service.stream_answer(
             "Current question",
@@ -290,6 +323,8 @@ async def test_includes_previous_history_in_streaming_prompt():
         )
     ]
 
-    assert "Conversation history" in llm.last_prompt
-    assert "Previous streaming question" in llm.last_prompt
-    assert "Previous streaming answer" in llm.last_prompt
+    assert len(runtime.last_call[3]) == 1
+    assert runtime.last_call[3][0].question == "Previous streaming question"
+    assert runtime.last_call[3][0].answer == "Previous streaming answer"
+    assert events[-1].type == "complete"
+    assert conversations.last_limit == 3

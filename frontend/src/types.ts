@@ -26,10 +26,7 @@ export interface Source {
   score: number;
 }
 
-export type Pipeline = "simple" | "agent";
-
 export interface ConversationTurnResponse {
-  pipeline: Pipeline;
   question: string;
   answer: string;
   sources: Source[];
@@ -63,5 +60,4 @@ export interface ChatMessage {
   text: string;
   sources?: Source[];
   inProgress?: boolean;
-  pipeline?: Pipeline;
 }

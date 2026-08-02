@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useChat } from "../useChat";
 import { useConversations } from "../useConversations";
-import type { Pipeline } from "../types";
 import { Chat } from "./Chat";
 import { ConversationList } from "./ConversationList";
 import { DocumentManager } from "./DocumentManager";
@@ -22,14 +21,12 @@ interface Props {
 }
 
 export function AuthenticatedApp({ token, onLogout }: Props) {
-  const [pipeline, setPipeline] = useState<Pipeline>("simple");
   const [conversationId, setConversationIdState] = useState(
     readOrCreateConversationId,
   );
   const { conversations, refresh } = useConversations(token);
   const { messages, connected, sending, ask, loadHistory, clear } = useChat(
     token,
-    pipeline,
     conversationId,
   );
 
@@ -72,8 +69,6 @@ export function AuthenticatedApp({ token, onLogout }: Props) {
             connected={connected}
             sending={sending}
             ask={ask}
-            pipeline={pipeline}
-            setPipeline={setPipeline}
           />
         </div>
       </main>

@@ -1,4 +1,4 @@
-"""Synchronous RAG query endpoint."""
+"""Moderated RAG query endpoint."""
 
 import logging
 

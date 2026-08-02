@@ -34,7 +34,6 @@ def _to_conversation_response(conversation: Conversation) -> ConversationRespons
 
 def _to_turn_response(turn: ConversationTurn) -> ConversationTurnResponse:
     return ConversationTurnResponse(
-        pipeline=turn.pipeline,
         question=turn.question,
         answer=turn.answer,
         sources=[

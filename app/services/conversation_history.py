@@ -28,7 +28,6 @@ def get_history_safely(
 def save_turn_safely(
     repository: ConversationRepositoryPort | None,
     conversation_id: UUID | None,
-    pipeline: str,
     question: str,
     answer: str,
     sources: list[FoundChunk],
@@ -40,7 +39,6 @@ def save_turn_safely(
         repository.save_turn(
             ConversationTurn(
                 conversation_id=conversation_id,
-                pipeline=pipeline,
                 question=question,
                 answer=answer,
                 sources=sources,

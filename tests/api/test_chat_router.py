@@ -1,6 +1,6 @@
 from fastapi import WebSocketDisconnect
 
-from app.api.routers.agent_chat import websocket_agent
+from app.api.routers.chat import websocket_chat
 from app.api.security import create_access_token
 from app.services.query_service import QueryCompletedEvent
 
@@ -27,7 +27,7 @@ class _FakeWebSocket:
         self.closed_code = code
 
 
-class _FakeStreamingAgentService:
+class _FakeStreamingQueryService:
     async def stream_answer(
         self,
         question,
@@ -39,28 +39,28 @@ class _FakeStreamingAgentService:
         yield QueryCompletedEvent(answer="No information found", sources=[])
 
 
-async def test_agent_websocket_requires_valid_token():
+async def test_websocket_requires_valid_token():
     websocket = _FakeWebSocket([{"token": "invalid-token"}])
 
-    await websocket_agent(websocket)
+    await websocket_chat(websocket)
 
     assert websocket.accepted is True
     assert websocket.sent_messages[0]["type"] == "error"
     assert websocket.closed_code == 4401
 
 
-async def test_agent_websocket_streams_answer_with_valid_token():
-    import app.api.routers.agent_chat as agent_chat_module
+async def test_websocket_streams_answer_with_valid_token():
+    import app.api.routers.chat as chat_module
 
-    original_get_qdrant = agent_chat_module.get_qdrant
-    original_get_http_client = agent_chat_module.get_ollama_http_client
-    original_get_db = agent_chat_module.get_conversations_db
-    original_build_service = agent_chat_module.build_agent_query_service
-    agent_chat_module.get_qdrant = lambda websocket: None
-    agent_chat_module.get_ollama_http_client = lambda websocket: None
-    agent_chat_module.get_conversations_db = lambda websocket: None
-    agent_chat_module.build_agent_query_service = (
-        lambda qdrant, http_client, connection: _FakeStreamingAgentService()
+    original_get_qdrant = chat_module.get_qdrant
+    original_get_http_client = chat_module.get_ollama_http_client
+    original_get_db = chat_module.get_conversations_db
+    original_build_service = chat_module.build_query_service
+    chat_module.get_qdrant = lambda websocket: None
+    chat_module.get_ollama_http_client = lambda websocket: None
+    chat_module.get_conversations_db = lambda websocket: None
+    chat_module.build_query_service = (
+        lambda qdrant, http_client, connection: _FakeStreamingQueryService()
     )
     websocket = _FakeWebSocket(
         [
@@ -69,12 +69,12 @@ async def test_agent_websocket_streams_answer_with_valid_token():
         ]
     )
     try:
-        await websocket_agent(websocket)
+        await websocket_chat(websocket)
     finally:
-        agent_chat_module.get_qdrant = original_get_qdrant
-        agent_chat_module.get_ollama_http_client = original_get_http_client
-        agent_chat_module.get_conversations_db = original_get_db
-        agent_chat_module.build_agent_query_service = original_build_service
+        chat_module.get_qdrant = original_get_qdrant
+        chat_module.get_ollama_http_client = original_get_http_client
+        chat_module.get_conversations_db = original_get_db
+        chat_module.build_query_service = original_build_service
 
     assert websocket.sent_messages[0]["type"] == "complete"
     assert websocket.sent_messages[0]["answer"] == "No information found"

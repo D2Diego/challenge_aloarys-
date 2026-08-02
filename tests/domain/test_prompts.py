@@ -22,7 +22,6 @@ def _chunk(text: str, index: int) -> FoundChunk:
 def _turn(question: str, answer: str) -> ConversationTurn:
     return ConversationTurn(
         conversation_id=uuid4(),
-        pipeline="simple",
         question=question,
         answer=answer,
         sources=[],

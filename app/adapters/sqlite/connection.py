@@ -13,7 +13,6 @@ CREATE TABLE IF NOT EXISTS conversations (
 CREATE TABLE IF NOT EXISTS turns (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
-    pipeline TEXT NOT NULL,
     question TEXT NOT NULL,
     answer TEXT NOT NULL,
     sources_json TEXT NOT NULL,

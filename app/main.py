@@ -12,8 +12,6 @@ from app.adapters.qdrant.client import ensure_collection, get_qdrant_client
 from app.adapters.qdrant.document_repository import QdrantDocumentRepository
 from app.adapters.sqlite.connection import open_connection
 from app.api.routers import (
-    agent_chat,
-    agent_query,
     auth,
     chat,
     conversations,
@@ -89,8 +87,6 @@ async def logging_middleware(request: Request, call_next):
 app.include_router(auth.router)
 app.include_router(documents.router)
 app.include_router(query.router)
-app.include_router(agent_query.router)
 app.include_router(chat.router)
-app.include_router(agent_chat.router)
 app.include_router(conversations.router)
 app.include_router(system.router)

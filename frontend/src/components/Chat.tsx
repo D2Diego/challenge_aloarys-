@@ -1,23 +1,14 @@
 import { type FormEvent, useEffect, useRef, useState } from "react";
-import type { ChatMessage, Pipeline } from "../types";
+import type { ChatMessage } from "../types";
 
 interface Props {
   messages: ChatMessage[];
   connected: boolean;
   sending: boolean;
   ask: (question: string) => void;
-  pipeline: Pipeline;
-  setPipeline: (pipeline: Pipeline) => void;
 }
 
-export function Chat({
-  messages,
-  connected,
-  sending,
-  ask,
-  pipeline,
-  setPipeline,
-}: Props) {
+export function Chat({ messages, connected, sending, ask }: Props) {
   const [question, setQuestion] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -37,24 +28,6 @@ export function Chat({
       <h2>
         Chat {!connected && <span className="badge status-failed">disconnected</span>}
       </h2>
-      <div className="mode-toggle">
-        <button
-          type="button"
-          disabled={sending}
-          className={pipeline === "simple" ? "active-mode" : ""}
-          onClick={() => setPipeline("simple")}
-        >
-          Simple
-        </button>
-        <button
-          type="button"
-          disabled={sending}
-          className={pipeline === "agent" ? "active-mode" : ""}
-          onClick={() => setPipeline("agent")}
-        >
-          Agent
-        </button>
-      </div>
       <div className="messages">
         {messages.length === 0 && (
           <p className="empty">Ask a question about the ingested documents.</p>
@@ -62,9 +35,6 @@ export function Chat({
         {messages.map((message) => (
           <div key={message.id} className={`message ${message.author}`}>
             <p>
-              {message.author === "assistant" && message.pipeline === "agent" && (
-                <span className="badge pipeline-badge">agent</span>
-              )}
               {message.text}
               {message.inProgress && <span className="blinking-cursor">▍</span>}
             </p>

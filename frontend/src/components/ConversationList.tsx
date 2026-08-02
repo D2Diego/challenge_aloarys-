@@ -43,7 +43,6 @@ export function ConversationList({
             author: "assistant",
             text: turn.answer,
             sources: turn.sources,
-            pipeline: turn.pipeline,
           },
         ],
       );

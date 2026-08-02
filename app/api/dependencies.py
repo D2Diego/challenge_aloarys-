@@ -10,7 +10,6 @@ from redis import Redis
 
 from app.adapters.ai.pydantic_runtime import PydanticAgentRuntime
 from app.adapters.e5_embeddings import E5Embeddings
-from app.adapters.ollama_llm import OllamaLLM
 from app.adapters.qdrant.document_repository import QdrantDocumentRepository
 from app.adapters.qdrant.vector_search import QdrantVectorSearch
 from app.adapters.rq.connection import ingestion_queue, redis_connection
@@ -21,7 +20,6 @@ from app.bootstrap.settings import settings
 from app.ports.conversation_repository import ConversationRepositoryPort
 from app.ports.document_repository import DocumentRepositoryPort
 from app.ports.task_queue import TaskQueuePort
-from app.services.agent_service import AgentQueryService
 from app.services.ingestion_service import IngestionService
 from app.services.moderation_service import ModerationService
 from app.services.query_service import QueryService
@@ -85,33 +83,9 @@ def get_ingestion_service(
 
 def build_query_service(
     qdrant: QdrantClient,
-    connection: sqlite3.Connection,
-) -> QueryService:
-    return QueryService(
-        QdrantVectorSearch(qdrant),
-        E5Embeddings(),
-        OllamaLLM(
-            settings.ollama_url,
-            settings.llm_model,
-            timeout=settings.ollama_timeout_seconds,
-        ),
-        conversation_repository=SQLiteConversationRepository(connection),
-        max_history_turns=settings.max_history_turns,
-    )
-
-
-def get_query_service(
-    qdrant: QdrantClient = Depends(get_qdrant),
-    connection: sqlite3.Connection = Depends(get_conversations_db),
-) -> QueryService:
-    return build_query_service(qdrant, connection)
-
-
-def build_agent_query_service(
-    qdrant: QdrantClient,
     http_client: httpx.AsyncClient,
     connection: sqlite3.Connection,
-) -> AgentQueryService:
+) -> QueryService:
     retrieval = RetrievalService(QdrantVectorSearch(qdrant), E5Embeddings())
     moderation = ModerationService(retrieval)
     runtime = PydanticAgentRuntime.for_ollama(
@@ -121,7 +95,7 @@ def build_agent_query_service(
         min_score=settings.min_score,
         http_client=http_client,
     )
-    return AgentQueryService(
+    return QueryService(
         moderation,
         runtime,
         conversation_repository=SQLiteConversationRepository(connection),
@@ -129,9 +103,9 @@ def build_agent_query_service(
     )
 
 
-def get_agent_query_service(
+def get_query_service(
     qdrant: QdrantClient = Depends(get_qdrant),
     http_client: httpx.AsyncClient = Depends(get_ollama_http_client),
     connection: sqlite3.Connection = Depends(get_conversations_db),
-) -> AgentQueryService:
-    return build_agent_query_service(qdrant, http_client, connection)
+) -> QueryService:
+    return build_query_service(qdrant, http_client, connection)

@@ -5,7 +5,12 @@ from uuid import UUID
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from app.api.dependencies import build_query_service, get_conversations_db, get_qdrant
+from app.api.dependencies import (
+    build_query_service,
+    get_conversations_db,
+    get_ollama_http_client,
+    get_qdrant,
+)
 from app.api.mapping import to_stream_payload
 from app.api.security import decode_token
 from app.bootstrap.settings import settings
@@ -52,6 +57,7 @@ async def websocket_chat(websocket: WebSocket):
     logger.info("chat_websocket_connected", extra={"user": user})
     query_service = build_query_service(
         get_qdrant(websocket),
+        get_ollama_http_client(websocket),
         get_conversations_db(websocket),
     )
     try:

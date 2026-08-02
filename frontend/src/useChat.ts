@@ -1,28 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { WS_URL } from "./api";
-import type { ChatEvent, ChatMessage, Pipeline } from "./types";
+import type { ChatEvent, ChatMessage } from "./types";
 
 function newId(): string {
   return crypto.randomUUID();
 }
 
-const WEBSOCKET_PATH_BY_PIPELINE: Record<Pipeline, string> = {
-  simple: "/ws/chat",
-  agent: "/ws/agent",
-};
-
-export function useChat(token: string, pipeline: Pipeline, conversationId: string) {
+export function useChat(token: string, conversationId: string) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [connected, setConnected] = useState(false);
   const [sending, setSending] = useState(false);
   const websocketRef = useRef<WebSocket | null>(null);
-  const pipelineRef = useRef(pipeline);
-  pipelineRef.current = pipeline;
 
   useEffect(() => {
-    const websocket = new WebSocket(
-      `${WS_URL}${WEBSOCKET_PATH_BY_PIPELINE[pipeline]}`,
-    );
+    const websocket = new WebSocket(`${WS_URL}/ws/chat`);
     websocketRef.current = websocket;
 
     websocket.onopen = () => {
@@ -77,7 +68,7 @@ export function useChat(token: string, pipeline: Pipeline, conversationId: strin
     };
 
     return () => websocket.close();
-  }, [token, pipeline, conversationId]);
+  }, [token, conversationId]);
 
   const ask = useCallback((question: string) => {
     const websocket = websocketRef.current;
@@ -86,13 +77,7 @@ export function useChat(token: string, pipeline: Pipeline, conversationId: strin
     setMessages((current) => [
       ...current,
       { id: newId(), author: "user", text: question },
-      {
-        id: newId(),
-        author: "assistant",
-        text: "",
-        inProgress: true,
-        pipeline: pipelineRef.current,
-      },
+      { id: newId(), author: "assistant", text: "", inProgress: true },
     ]);
     setSending(true);
     websocket.send(JSON.stringify({ question }));

@@ -209,7 +209,6 @@ def test_run_accumulates_sources_from_multiple_tool_calls():
 def _turn(question: str, answer: str) -> ConversationTurn:
     return ConversationTurn(
         conversation_id=uuid4(),
-        pipeline="agent",
         question=question,
         answer=answer,
         sources=[],

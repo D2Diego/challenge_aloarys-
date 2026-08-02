@@ -8,7 +8,9 @@ WORKDIR /app
 COPY pyproject.toml ./
 COPY app ./app
 
-RUN pip install --no-cache-dir .
+RUN pip install --no-cache-dir "torch>=2.4" \
+        --index-url https://download.pytorch.org/whl/cpu \
+    && pip install --no-cache-dir .
 
 EXPOSE 8000
 

@@ -295,21 +295,3 @@ button.link {
 .conversation-list li.active-conversation {
   border-color: var(--accent-color);
 }
-
-.mode-toggle {
-  display: flex;
-  gap: 0.4rem;
-  margin-bottom: 0.5rem;
-}
-
-.mode-toggle button {
-  background: var(--border-color);
-}
-
-.mode-toggle button.active-mode {
-  background: var(--accent-color);
-}
-
-.pipeline-badge {
-  margin-right: 0.4rem;
-}

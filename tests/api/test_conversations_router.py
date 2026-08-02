@@ -101,7 +101,6 @@ async def test_returns_conversation_turns():
     )
     turn = ConversationTurn(
         conversation_id=conversation_id,
-        pipeline="simple",
         question="question",
         answer="answer",
         sources=[chunk],

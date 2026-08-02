@@ -2,7 +2,6 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -79,7 +78,6 @@ class ConversationListResponse(BaseModel):
 
 
 class ConversationTurnResponse(BaseModel):
-    pipeline: Literal["simple", "agent"]
     question: str
     answer: str
     sources: list[Source]

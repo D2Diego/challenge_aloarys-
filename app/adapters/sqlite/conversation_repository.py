@@ -68,12 +68,11 @@ class SQLiteConversationRepository:
                 (conversation_id, timestamp, timestamp),
             )
             self._connection.execute(
-                "INSERT INTO turns (conversation_id, pipeline, question, answer, "
+                "INSERT INTO turns (conversation_id, question, answer, "
                 "sources_json, prompt_tokens, completion_tokens, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (
                     conversation_id,
-                    turn.pipeline,
                     turn.question,
                     turn.answer,
                     _sources_to_json(turn.sources),
@@ -89,7 +88,7 @@ class SQLiteConversationRepository:
         limit: int,
     ) -> list[ConversationTurn]:
         rows = self._connection.execute(
-            "SELECT pipeline, question, answer, sources_json, prompt_tokens, "
+            "SELECT question, answer, sources_json, prompt_tokens, "
             "completion_tokens, created_at FROM turns WHERE conversation_id = ? "
             "ORDER BY created_at DESC LIMIT ?",
             (str(conversation_id), limit),
@@ -97,15 +96,14 @@ class SQLiteConversationRepository:
         turns = [
             ConversationTurn(
                 conversation_id=conversation_id,
-                pipeline=row[0],
-                question=row[1],
-                answer=row[2],
-                sources=_sources_from_json(row[3]),
+                question=row[0],
+                answer=row[1],
+                sources=_sources_from_json(row[2]),
                 usage=TokenUsage(
-                    prompt_tokens=row[4],
-                    completion_tokens=row[5],
+                    prompt_tokens=row[3],
+                    completion_tokens=row[4],
                 ),
-                created_at=datetime.fromisoformat(row[6]),
+                created_at=datetime.fromisoformat(row[5]),
             )
             for row in rows
         ]

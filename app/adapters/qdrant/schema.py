@@ -1,5 +1,6 @@
 """Qdrant payload schemas for documents and chunks."""
 
+import os
 from datetime import datetime
 from enum import Enum
 from uuid import UUID
@@ -8,8 +9,8 @@ from pydantic import BaseModel
 
 from app.domain.entities import DocumentStatus, DocumentType
 
-QDRANT_COLLECTION = "documents"
-EMBEDDING_DIM = 768
+QDRANT_COLLECTION = os.environ.get("QDRANT_COLLECTION", "documents")
+EMBEDDING_DIM = int(os.environ.get("EMBEDDING_DIM", "768"))
 
 
 class RecordType(str, Enum):

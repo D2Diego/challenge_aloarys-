@@ -1,12 +1,13 @@
 """Multilingual E5 embedding adapter."""
 
+import os
 from functools import lru_cache
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from sentence_transformers import SentenceTransformer
 
-_MODEL_NAME = "intfloat/multilingual-e5-base"
+_MODEL_NAME = os.environ.get("EMBEDDING_MODEL", "intfloat/multilingual-e5-base")
 
 
 @lru_cache(maxsize=1)
